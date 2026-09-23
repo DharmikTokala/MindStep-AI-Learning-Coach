@@ -1,0 +1,8 @@
+google-genai
+streamlit
+pypdf
+python-docx
+python-dotenv
+pandas
+sympy
+manim
