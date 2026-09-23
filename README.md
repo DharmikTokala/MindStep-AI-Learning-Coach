@@ -10,23 +10,28 @@ The project currently focuses on Grade 11–12 and JEE-style mathematics.
 ## 📸 Screenshots
 
 ### AI Coach Home
+
 ![AI Coach Home](screenshots/home.png)
 
 ### Mistake Analysis
+
 ![Mistake Analysis](screenshots/mistake_analysis.png)
 
 ### Corrected Solution
-![Corrected Solution](_corrected_solution.png)
+
+![Corrected Solution](screenshots/_corrected_solution.png)
 
 ### Progress Dashboard
-![Progress Dashboard](_dashboard.png)
+
+![Progress Dashboard](screenshots/_dashboard.png)
 
 ### AI Evaluation
-![AI Evaluation](_evaluation.png)
+
+![AI Evaluation](screenshots/_evaluation.png)
 
 ### Chapter Learning
-![Chapter Learning](_chapter_learning.png)
-## 🚀 What MindStep Does
+
+![Chapter Learning](screenshots/_chapter_learning.png)
 
 A student can:
 
