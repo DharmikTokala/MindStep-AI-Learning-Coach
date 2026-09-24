@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 
 import sympy as sp
@@ -107,6 +108,7 @@ LOCAL_DICT = {
     "E": sp.E,
 
     "sqrt": sp.sqrt,
+
     "sin": sp.sin,
     "cos": sp.cos,
     "tan": sp.tan,
@@ -194,8 +196,7 @@ analysis_schema = {
 
         "misconception_category": {
             "type": "string",
-            "enum":
-                MISCONCEPTION_CATEGORIES
+            "enum": MISCONCEPTION_CATEGORIES
         },
 
         "confidence": {
@@ -373,7 +374,6 @@ def normalize_math_text(
             new
         )
 
-
     text = re.sub(
         r"^\s*(step\s*\d+\s*[:.)-]?\s*)",
         "",
@@ -381,14 +381,12 @@ def normalize_math_text(
         flags=re.IGNORECASE
     )
 
-
     text = re.sub(
         r"^\s*(therefore|thus|hence|so)\s*[:,]?\s*",
         "",
         text,
         flags=re.IGNORECASE
     )
-
 
     return text.strip()
 
@@ -407,7 +405,6 @@ def safe_parse_expression(
 
     if len(expression) > 200:
         return None
-
 
     try:
 
@@ -435,7 +432,6 @@ def parse_equation(
         line
     )
 
-
     if (
         "<=" in line
         or
@@ -445,18 +441,13 @@ def parse_equation(
     ):
         return None
 
-
     if line.count("=") != 1:
         return None
 
-
-    left_text, right_text = (
-        line.split(
-            "=",
-            1
-        )
+    left_text, right_text = line.split(
+        "=",
+        1
     )
-
 
     left = safe_parse_expression(
         left_text
@@ -466,14 +457,12 @@ def parse_equation(
         right_text
     )
 
-
     if (
         left is None
         or
         right is None
     ):
         return None
-
 
     return (
         left,
@@ -492,14 +481,8 @@ def equations_equivalent(
 
     try:
 
-        left1, right1 = (
-            equation_one
-        )
-
-        left2, right2 = (
-            equation_two
-        )
-
+        left1, right1 = equation_one
+        left2, right2 = equation_two
 
         expr1 = sp.simplify(
             left1 - right1
@@ -509,27 +492,21 @@ def equations_equivalent(
             left2 - right2
         )
 
-
         symbols = list(
             expr1.free_symbols
             |
             expr2.free_symbols
         )
 
-
         if not symbols:
 
             value1 = (
-                sp.simplify(
-                    expr1
-                )
+                sp.simplify(expr1)
                 == 0
             )
 
             value2 = (
-                sp.simplify(
-                    expr2
-                )
+                sp.simplify(expr2)
                 == 0
             )
 
@@ -538,7 +515,6 @@ def equations_equivalent(
                 ==
                 value2
             )
-
 
         if len(symbols) == 1:
 
@@ -558,17 +534,11 @@ def equations_equivalent(
                     domain=sp.S.Reals
                 )
 
-
-                if (
-                    solution1
-                    ==
-                    solution2
-                ):
+                if solution1 == solution2:
                     return True
 
             except Exception:
                 pass
-
 
         if (
             expr1 != 0
@@ -577,8 +547,7 @@ def equations_equivalent(
         ):
 
             ratio = sp.simplify(
-                expr1
-                / expr2
+                expr1 / expr2
             )
 
             if (
@@ -587,7 +556,6 @@ def equations_equivalent(
                 ratio != 0
             ):
                 return True
-
 
         return False
 
@@ -657,6 +625,8 @@ def extract_math_steps(
         )
 
     return steps
+
+
 # =========================================================
 # SYMBOLIC STEP ANALYSIS
 # =========================================================
@@ -686,12 +656,13 @@ def analyze_symbolic_steps(
         expression = None
 
         if equation is None:
+
             expression = safe_parse_expression(
                 step
             )
 
         # ---------------------------------------------
-        # EQUATION STEP
+        # EQUATION
         # ---------------------------------------------
 
         if equation is not None:
@@ -757,7 +728,7 @@ def analyze_symbolic_steps(
             continue
 
         # ---------------------------------------------
-        # EXPRESSION STEP
+        # EXPRESSION
         # ---------------------------------------------
 
         if expression is not None:
@@ -844,6 +815,7 @@ def create_symbolic_report(
     )
 
     if not analysis:
+
         return (
             "No usable symbolic steps were detected."
         )
@@ -865,6 +837,93 @@ def create_symbolic_report(
 
     return "\n\n".join(
         report_lines
+    )
+
+
+# =========================================================
+# GEMINI RETRY HELPER
+# =========================================================
+
+def generate_gemini_response(
+    prompt: str
+):
+
+    max_retries = 4
+
+    last_error = None
+
+    for retry_index in range(
+        max_retries
+    ):
+
+        try:
+
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config={
+                    "response_mime_type":
+                        "application/json",
+
+                    "response_schema":
+                        analysis_schema,
+                },
+            )
+
+            return response
+
+        except Exception as e:
+
+            last_error = e
+
+            error_text = str(e)
+
+            temporary_error = (
+                "429" in error_text
+                or
+                "503" in error_text
+                or
+                "504" in error_text
+                or
+                "RESOURCE_EXHAUSTED" in error_text
+                or
+                "UNAVAILABLE" in error_text
+                or
+                "DEADLINE_EXCEEDED" in error_text
+                or
+                "deadline expired" in error_text.lower()
+                or
+                "high demand" in error_text.lower()
+                or
+                "rate limit" in error_text.lower()
+                or
+                "temporarily unavailable" in error_text.lower()
+            )
+
+            if not temporary_error:
+                raise
+
+            if retry_index >= max_retries - 1:
+                break
+
+            wait_seconds = (
+                2
+                *
+                (
+                    retry_index
+                    + 1
+                )
+            )
+
+            time.sleep(
+                wait_seconds
+            )
+
+    if last_error is not None:
+        raise last_error
+
+    raise RuntimeError(
+        "Gemini did not return a response."
     )
 
 
@@ -1220,16 +1279,8 @@ IMPORTANT RULES
 15. Never claim SymPy verified something it did not verify.
 """
 
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-        config={
-            "response_mime_type":
-                "application/json",
-
-            "response_schema":
-                analysis_schema,
-        },
+    response = generate_gemini_response(
+        prompt
     )
 
     data = json.loads(
@@ -1242,11 +1293,13 @@ IMPORTANT RULES
     )
 
     try:
+
         confidence = float(
             confidence
         )
 
     except Exception:
+
         confidence = 0.0
 
     confidence = max(
