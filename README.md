@@ -1,4 +1,7 @@
 # 🧠 MindStep — AI Learning Coach
+## 🌐 Live Demo
+
+[Open MindStep](https://mindstep-learning-coach.streamlit.app/)
 
 MindStep is an AI-powered learning coach that helps students understand **where their reasoning went wrong**, not just whether their final answer was correct.
 
