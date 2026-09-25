@@ -3,6 +3,7 @@ import streamlit as st
 from coach_core import (
     analyze_student_attempt,
     get_visible_feedback,
+    get_starting_help,
 )
 
 from storage import (
@@ -32,6 +33,8 @@ st.set_page_config(
 )
 
 apply_global_styles()
+
+
 st.sidebar.markdown(
     (
         '<div style="'
@@ -96,6 +99,12 @@ if "current_question" not in st.session_state:
 if "student_attempt" not in st.session_state:
     st.session_state["student_attempt"] = ""
 
+if "start_help_result" not in st.session_state:
+    st.session_state["start_help_result"] = None
+
+if "start_help_level" not in st.session_state:
+    st.session_state["start_help_level"] = 1
+
 
 # =========================================================
 # HELPERS
@@ -142,8 +151,41 @@ def reset_problem():
     st.session_state["current_question"] = ""
     st.session_state["student_attempt"] = ""
 
-    if "retry_box" in st.session_state:
-        del st.session_state["retry_box"]
+    st.session_state["start_help_result"] = None
+    st.session_state["start_help_level"] = 1
+
+    for key in [
+        "retry_box",
+        "starter_attempt_box",
+    ]:
+
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def render_math_block(
+    math_text: str
+):
+
+    if not math_text:
+        return
+
+    cleaned = clean_latex_math(
+        math_text
+    )
+
+    try:
+
+        st.latex(
+            cleaned
+        )
+
+    except Exception:
+
+        st.code(
+            cleaned,
+            language="text"
+        )
 
 
 # =========================================================
@@ -199,10 +241,6 @@ def render_reasoning_steps(result):
             first_incorrect_seen = True
 
 
-        # =================================================
-        # CHOOSE CARD STYLE
-        # =================================================
-
         if status == "correct":
 
             border = "rgba(34,197,94,0.35)"
@@ -212,7 +250,6 @@ def render_reasoning_steps(result):
 
             icon = "✓"
             label = "Correct Step"
-
 
         elif status == "incorrect":
 
@@ -225,9 +262,9 @@ def render_reasoning_steps(result):
 
             if is_first_wrong:
                 label = "First Mistake Detected"
+
             else:
                 label = "Incorrect Step"
-
 
         else:
 
@@ -239,10 +276,6 @@ def render_reasoning_steps(result):
             icon = "?"
             label = "Needs Checking"
 
-
-        # =================================================
-        # CARD HEADER
-        # =================================================
 
         card_html = (
             f'<div style="'
@@ -300,16 +333,7 @@ def render_reasoning_steps(result):
             unsafe_allow_html=True
         )
 
-
-        # =================================================
-        # STUDENT MATH
-        # =================================================
-
         if student_step:
-
-            cleaned_step = clean_latex_math(
-                student_step
-            )
 
             with st.container(
                 border=True
@@ -319,23 +343,9 @@ def render_reasoning_steps(result):
                     "Student's step"
                 )
 
-                try:
-
-                    st.latex(
-                        cleaned_step
-                    )
-
-                except Exception:
-
-                    st.code(
-                        cleaned_step,
-                        language="text"
-                    )
-
-
-        # =================================================
-        # FIRST ERROR MESSAGE
-        # =================================================
+                render_math_block(
+                    student_step
+                )
 
         if is_first_wrong:
 
@@ -376,22 +386,12 @@ def render_solution_walkthrough(result):
         ""
     )
 
-
-    # =====================================================
-    # BIG IDEA
-    # =====================================================
-
     if short_summary:
 
         render_highlight_banner(
             "🧠 <b>Big idea</b><br>"
             + short_summary
         )
-
-
-    # =====================================================
-    # STEP-BY-STEP EXPLANATION
-    # =====================================================
 
     if steps:
 
@@ -415,13 +415,10 @@ def render_solution_walkthrough(result):
                 ""
             )
 
-            math_text = clean_latex_math(
-                step.get(
-                    "math",
-                    ""
-                )
+            math_text = step.get(
+                "math",
+                ""
             )
-
 
             with st.container(
                 border=True
@@ -452,6 +449,7 @@ def render_solution_walkthrough(result):
                 )
 
                 if explanation:
+
                     st.write(
                         explanation
                     )
@@ -462,20 +460,9 @@ def render_solution_walkthrough(result):
                         "**Mathematics**"
                     )
 
-                    try:
-                        st.latex(
-                            math_text
-                        )
-
-                    except Exception:
-                        st.write(
-                            math_text
-                        )
-
-
-    # =====================================================
-    # FINAL ANSWER
-    # =====================================================
+                    render_math_block(
+                        math_text
+                    )
 
     if final_answer:
 
@@ -483,28 +470,13 @@ def render_solution_walkthrough(result):
             "### ✅ Final Answer"
         )
 
-        cleaned_answer = clean_latex_math(
-            final_answer
-        )
-
         with st.container(
             border=True
         ):
 
-            try:
-                st.latex(
-                    cleaned_answer
-                )
-
-            except Exception:
-                st.success(
-                    cleaned_answer
-                )
-
-
-    # =====================================================
-    # WHAT CHANGED
-    # =====================================================
+            render_math_block(
+                final_answer
+            )
 
     if mistake_fix:
 
@@ -516,17 +488,253 @@ def render_solution_walkthrough(result):
             mistake_fix
         )
 
-
-    # =====================================================
-    # TAKEAWAY
-    # =====================================================
-
     if steps:
 
         st.info(
             "🎯 **Takeaway:** Try to remember the reasoning pattern, "
             "not just the final formula."
         )
+
+
+# =========================================================
+# START HELP UI
+# =========================================================
+
+def render_start_help(
+    starter
+):
+
+    st.divider()
+
+    render_section_header(
+        "Let's Get You Started",
+        "You do not need to know the whole solution. Start with one idea."
+    )
+
+    col1, col2, col3 = st.columns(
+        3
+    )
+
+    with col1:
+
+        st.metric(
+            "Topic",
+            starter.topic
+        )
+
+    with col2:
+
+        st.metric(
+            "Subtopic",
+            starter.subtopic
+            or "—"
+        )
+
+    with col3:
+
+        st.metric(
+            "Difficulty",
+            starter.difficulty
+            or "—"
+        )
+
+
+    render_soft_card(
+        "🧠 Concept You Need",
+        starter.concept
+    )
+
+
+    render_soft_card(
+        "👀 What to Recognize",
+        starter.recognition
+    )
+
+
+    level = st.session_state[
+        "start_help_level"
+    ]
+
+
+    render_section_header(
+        f"Starter Hint {level}",
+        "Use only as much help as you need."
+    )
+
+
+    if level == 1:
+
+        hint_text = starter.hint_1
+        hint_math = starter.hint_1_math
+
+    elif level == 2:
+
+        hint_text = starter.hint_2
+        hint_math = starter.hint_2_math
+
+    else:
+
+        hint_text = starter.hint_3
+        hint_math = starter.hint_3_math
+
+
+    st.info(
+        "💡 " + hint_text
+    )
+
+
+    if hint_math:
+
+        with st.container(
+            border=True
+        ):
+
+            st.caption(
+                "Useful setup"
+            )
+
+            render_math_block(
+                hint_math
+            )
+
+
+    if level < 3:
+
+        if st.button(
+            "💡 Give Me a Stronger Hint",
+            use_container_width=True
+        ):
+
+            st.session_state[
+                "start_help_level"
+            ] += 1
+
+            st.rerun()
+
+    else:
+
+        st.success(
+            "You now have the main setup. Try continuing it yourself."
+        )
+
+
+    st.markdown(
+        "### 🎯 Your Next Move"
+    )
+
+    st.write(
+        starter.student_task
+    )
+
+
+    starter_attempt = st.text_area(
+        "Now try solving the problem",
+        placeholder=(
+            "Write what you can do from here. "
+            "It does not need to be perfect."
+        ),
+        height=190,
+        key="starter_attempt_box"
+    )
+
+
+    if st.button(
+        "🔍 Check What I Tried",
+        type="primary",
+        use_container_width=True
+    ):
+
+        if not starter_attempt.strip():
+
+            st.warning(
+                "Write what you can do first."
+            )
+
+        else:
+
+            with st.spinner(
+                "🧠 Checking your attempt..."
+            ):
+
+                try:
+
+                    result = analyze_student_attempt(
+                        st.session_state[
+                            "current_question"
+                        ],
+                        starter_attempt
+                    )
+
+                    st.session_state[
+                        "coach_result"
+                    ] = result
+
+                    st.session_state[
+                        "attempt_number"
+                    ] = 1
+
+                    st.session_state[
+                        "student_attempt"
+                    ] = starter_attempt
+
+                    st.session_state[
+                        "start_help_result"
+                    ] = None
+
+                    st.session_state[
+                        "start_help_level"
+                    ] = 1
+
+
+                    save_attempt(
+                        question=
+                            st.session_state[
+                                "current_question"
+                            ],
+
+                        attempted_solution=
+                            starter_attempt,
+
+                        topic=
+                            result.topic,
+
+                        misconception_category=
+                            result.misconception_category,
+
+                        confidence=
+                            result.confidence,
+
+                        first_wrong_step=
+                            result.first_wrong_step,
+
+                        diagnosis=
+                            result.diagnosis,
+
+                        attempt_number=1,
+                    )
+
+
+                    if (
+                        "starter_attempt_box"
+                        in st.session_state
+                    ):
+
+                        del st.session_state[
+                            "starter_attempt_box"
+                        ]
+
+
+                    st.rerun()
+
+                except Exception as e:
+
+                    st.error(
+                        "The coach could not check your attempt."
+                    )
+
+                    st.code(
+                        str(e)
+                    )
 
 
 # =========================================================
@@ -544,13 +752,14 @@ render_feature_cards()
 
 render_section_header(
     "Try the AI Coach",
-    "Enter a math problem and show how you tried to solve it."
+    "Enter a math problem. Try it yourself, or ask MindStep to help you begin."
 )
 
 render_highlight_banner(
-    "The coach studies <b>how you think</b>. "
-    "It looks for the first meaningful reasoning error and gives you "
-    "a chance to repair it before revealing the full explanation."
+    "Already tried? <b>Analyze your reasoning.</b> "
+    "Completely stuck? Use <b>I Don't Know How to Start</b> "
+    "and MindStep will guide you into the problem without immediately "
+    "giving away the answer."
 )
 
 
@@ -575,7 +784,7 @@ question = st.text_area(
 
 
 attempted_solution = st.text_area(
-    "Show your attempted solution",
+    "Show your attempted solution — leave this blank if you don't know how to start",
     placeholder=(
         "Example:\n"
         "dy/dx = 5(x^2 + 1)^4"
@@ -585,14 +794,36 @@ attempted_solution = st.text_area(
 
 
 # =========================================================
-# ANALYZE BUTTON
+# MAIN ACTION BUTTONS
 # =========================================================
 
-if st.button(
-    "✨ Analyze My Thinking",
-    type="primary",
-    use_container_width=True
-):
+button_col1, button_col2 = st.columns(
+    2
+)
+
+
+with button_col1:
+
+    analyze_clicked = st.button(
+        "✨ Analyze My Thinking",
+        type="primary",
+        use_container_width=True
+    )
+
+
+with button_col2:
+
+    start_clicked = st.button(
+        "🆘 I Don't Know How to Start",
+        use_container_width=True
+    )
+
+
+# =========================================================
+# ANALYZE STUDENT ATTEMPT
+# =========================================================
+
+if analyze_clicked:
 
     if not question.strip():
 
@@ -603,7 +834,8 @@ if st.button(
     elif not attempted_solution.strip():
 
         st.warning(
-            "Show your attempted reasoning first."
+            "Either write your attempted solution or use "
+            "“I Don't Know How to Start”."
         )
 
     else:
@@ -614,11 +846,9 @@ if st.button(
 
             try:
 
-                result = (
-                    analyze_student_attempt(
-                        question,
-                        attempted_solution
-                    )
+                result = analyze_student_attempt(
+                    question,
+                    attempted_solution
                 )
 
                 st.session_state[
@@ -637,7 +867,17 @@ if st.button(
                     "student_attempt"
                 ] = attempted_solution
 
+                st.session_state[
+                    "start_help_result"
+                ] = None
+
+                st.session_state[
+                    "start_help_level"
+                ] = 1
+
+
                 if "retry_box" in st.session_state:
+
                     del st.session_state[
                         "retry_box"
                     ]
@@ -645,16 +885,28 @@ if st.button(
 
                 save_attempt(
                     question=question,
-                    attempted_solution=attempted_solution,
-                    topic=result.topic,
+
+                    attempted_solution=
+                        attempted_solution,
+
+                    topic=
+                        result.topic,
+
                     misconception_category=
                         result.misconception_category,
-                    confidence=result.confidence,
+
+                    confidence=
+                        result.confidence,
+
                     first_wrong_step=
                         result.first_wrong_step,
-                    diagnosis=result.diagnosis,
+
+                    diagnosis=
+                        result.diagnosis,
+
                     attempt_number=1,
                 )
+
 
                 st.rerun()
 
@@ -670,7 +922,92 @@ if st.button(
 
 
 # =========================================================
-# FEEDBACK
+# I DON'T KNOW HOW TO START
+# =========================================================
+
+if start_clicked:
+
+    if not question.strip():
+
+        st.warning(
+            "Enter the math question first."
+        )
+
+    else:
+
+        with st.spinner(
+            "🧭 Finding the best way to help you begin..."
+        ):
+
+            try:
+
+                starter = get_starting_help(
+                    question
+                )
+
+                st.session_state[
+                    "start_help_result"
+                ] = starter
+
+                st.session_state[
+                    "start_help_level"
+                ] = 1
+
+                st.session_state[
+                    "current_question"
+                ] = question
+
+                st.session_state[
+                    "coach_result"
+                ] = None
+
+                if (
+                    "starter_attempt_box"
+                    in st.session_state
+                ):
+
+                    del st.session_state[
+                        "starter_attempt_box"
+                    ]
+
+
+                st.rerun()
+
+            except Exception as e:
+
+                st.error(
+                    "MindStep could not create a starter hint."
+                )
+
+                st.code(
+                    str(e)
+                )
+
+
+# =========================================================
+# STARTER HELP DISPLAY
+# =========================================================
+
+starter = st.session_state.get(
+    "start_help_result"
+)
+
+
+if (
+    starter is not None
+    and
+    st.session_state.get(
+        "coach_result"
+    ) is None
+):
+
+    render_start_help(
+        starter
+    )
+
+
+# =========================================================
+# NORMAL COACH FEEDBACK
 # =========================================================
 
 result = st.session_state.get(
@@ -687,22 +1024,20 @@ if result is not None:
         "Here's what the AI found in your reasoning."
     )
 
-    attempt_number = (
-        st.session_state[
-            "attempt_number"
-        ]
-    )
 
-    feedback = (
-        get_visible_feedback(
-            result,
-            attempt_number
-        )
+    attempt_number = st.session_state[
+        "attempt_number"
+    ]
+
+
+    feedback = get_visible_feedback(
+        result,
+        attempt_number
     )
 
 
     # =====================================================
-    # TOP SUMMARY
+    # SUMMARY
     # =====================================================
 
     col1, col2, col3, col4 = st.columns(
@@ -711,6 +1046,7 @@ if result is not None:
 
 
     with col1:
+
         st.metric(
             "Topic",
             result.topic
@@ -718,6 +1054,7 @@ if result is not None:
 
 
     with col2:
+
         st.metric(
             "Subtopic",
             result.subtopic
@@ -726,6 +1063,7 @@ if result is not None:
 
 
     with col3:
+
         st.metric(
             "Difficulty",
             result.difficulty
@@ -734,6 +1072,7 @@ if result is not None:
 
 
     with col4:
+
         st.metric(
             "AI Confidence",
             f"{round(result.confidence * 100)}%"
@@ -756,14 +1095,15 @@ if result is not None:
 
         render_soft_card(
             "🧩 Likely Misconception",
-            f"<b>{readable_category(result.misconception_category)}</b>"
-            f"<br><br>{result.diagnosis}"
+            (
+                f"<b>"
+                f"{readable_category(result.misconception_category)}"
+                f"</b>"
+                f"<br><br>"
+                f"{result.diagnosis}"
+            )
         )
 
-
-    # =====================================================
-    # UPGRADED REASONING ANALYSIS
-    # =====================================================
 
     render_reasoning_steps(
         result
@@ -784,20 +1124,9 @@ if result is not None:
             "### 🎯 First Step Worth Checking"
         )
 
-        cleaned_wrong_step = clean_latex_math(
+        render_math_block(
             result.first_wrong_step
         )
-
-        try:
-            st.latex(
-                cleaned_wrong_step
-            )
-
-        except Exception:
-            st.code(
-                cleaned_wrong_step,
-                language="text"
-            )
 
 
     # =====================================================
@@ -812,11 +1141,13 @@ if result is not None:
             "🎉 Nice recovery! Your latest reasoning is mathematically correct."
         )
 
+
         render_soft_card(
             "✅ Nice Recovery",
             "You repaired the earlier mistake. "
             "Now the coach will organize the correct method into a clean explanation."
         )
+
 
         with st.expander(
             "📚 See why your solution works",
@@ -880,6 +1211,7 @@ if result is not None:
                 "Change the part of your reasoning that the hint points toward."
             )
 
+
             retry_text = st.text_area(
                 "Write your improved solution",
                 placeholder=(
@@ -924,13 +1256,16 @@ if result is not None:
                                 )
                             )
 
+
                             st.session_state[
                                 "coach_result"
                             ] = new_result
 
+
                             st.session_state[
                                 "attempt_number"
                             ] = new_attempt_number
+
 
                             st.session_state[
                                 "student_attempt"
@@ -968,7 +1303,11 @@ if result is not None:
                             )
 
 
-                            if "retry_box" in st.session_state:
+                            if (
+                                "retry_box"
+                                in st.session_state
+                            ):
+
                                 del st.session_state[
                                     "retry_box"
                                 ]
@@ -999,6 +1338,7 @@ if result is not None:
                 "Full Explanation",
                 "You've worked through several hints, so the complete reasoning is now unlocked."
             )
+
 
             render_solution_walkthrough(
                 result
@@ -1090,6 +1430,7 @@ else:
 
 
             with col1:
+
                 st.write(
                     f"**Attempt:** "
                     f"{saved_attempt_number}"
@@ -1097,6 +1438,7 @@ else:
 
 
             with col2:
+
                 st.write(
                     f"**AI Confidence:** "
                     f"{round(confidence * 100)}%"

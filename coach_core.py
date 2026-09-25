@@ -74,89 +74,25 @@ MISCONCEPTION_CATEGORIES = [
 
 
 # =========================================================
-# SYMPY SETUP
-# =========================================================
-
-TRANSFORMATIONS = (
-    standard_transformations
-    +
-    (
-        implicit_multiplication_application,
-        convert_xor,
-    )
-)
-
-
-x, y, z, a, b, c, t, n, m = sp.symbols(
-    "x y z a b c t n m"
-)
-
-
-LOCAL_DICT = {
-    "x": x,
-    "y": y,
-    "z": z,
-    "a": a,
-    "b": b,
-    "c": c,
-    "t": t,
-    "n": n,
-    "m": m,
-
-    "pi": sp.pi,
-    "e": sp.E,
-    "E": sp.E,
-
-    "sqrt": sp.sqrt,
-
-    "sin": sp.sin,
-    "cos": sp.cos,
-    "tan": sp.tan,
-    "sec": sp.sec,
-    "csc": sp.csc,
-    "cot": sp.cot,
-
-    "asin": sp.asin,
-    "acos": sp.acos,
-    "atan": sp.atan,
-
-    "log": sp.log,
-    "ln": sp.log,
-    "exp": sp.exp,
-}
-
-
-# =========================================================
-# RESULT OBJECT
+# RESULT OBJECTS
 # =========================================================
 
 @dataclass
 class CoachResult:
 
     student_is_correct: bool
-
     topic: str
-
     misconception_category: str
-
     confidence: float
-
     first_wrong_step: str
-
     diagnosis: str
-
     hint_1: str
-
     hint_2: str
-
     hint_3: str
-
     full_explanation: str
 
     subtopic: str = ""
-
     difficulty: str = ""
-
     symbolic_verification: str = ""
 
     step_analysis: list = field(
@@ -168,8 +104,30 @@ class CoachResult:
     )
 
 
+@dataclass
+class StartHelpResult:
+
+    topic: str
+    subtopic: str
+    difficulty: str
+
+    concept: str
+    recognition: str
+
+    hint_1: str
+    hint_1_math: str
+
+    hint_2: str
+    hint_2_math: str
+
+    hint_3: str
+    hint_3_math: str
+
+    student_task: str
+
+
 # =========================================================
-# GEMINI OUTPUT SCHEMA
+# GEMINI OUTPUT SCHEMA — NORMAL COACH
 # =========================================================
 
 analysis_schema = {
@@ -347,6 +305,82 @@ analysis_schema = {
 
 
 # =========================================================
+# GEMINI OUTPUT SCHEMA — START HELP
+# =========================================================
+
+start_help_schema = {
+
+    "type": "object",
+
+    "properties": {
+
+        "topic": {
+            "type": "string"
+        },
+
+        "subtopic": {
+            "type": "string"
+        },
+
+        "difficulty": {
+            "type": "string"
+        },
+
+        "concept": {
+            "type": "string"
+        },
+
+        "recognition": {
+            "type": "string"
+        },
+
+        "hint_1": {
+            "type": "string"
+        },
+
+        "hint_1_math": {
+            "type": "string"
+        },
+
+        "hint_2": {
+            "type": "string"
+        },
+
+        "hint_2_math": {
+            "type": "string"
+        },
+
+        "hint_3": {
+            "type": "string"
+        },
+
+        "hint_3_math": {
+            "type": "string"
+        },
+
+        "student_task": {
+            "type": "string"
+        }
+    },
+
+    "required": [
+        "topic",
+        "subtopic",
+        "difficulty",
+        "concept",
+        "recognition",
+        "hint_1",
+        "hint_1_math",
+        "hint_2",
+        "hint_2_math",
+        "hint_3",
+        "hint_3_math",
+        "student_task"
+    ]
+}
+
+
+# =========================================================
 # NORMALIZE MATH
 # =========================================================
 
@@ -418,6 +452,59 @@ def safe_parse_expression(
     except Exception:
 
         return None
+
+
+# =========================================================
+# SYMPY SETUP
+# =========================================================
+
+TRANSFORMATIONS = (
+    standard_transformations
+    +
+    (
+        implicit_multiplication_application,
+        convert_xor,
+    )
+)
+
+
+x, y, z, a, b, c, t, n, m = sp.symbols(
+    "x y z a b c t n m"
+)
+
+
+LOCAL_DICT = {
+    "x": x,
+    "y": y,
+    "z": z,
+    "a": a,
+    "b": b,
+    "c": c,
+    "t": t,
+    "n": n,
+    "m": m,
+
+    "pi": sp.pi,
+    "e": sp.E,
+    "E": sp.E,
+
+    "sqrt": sp.sqrt,
+
+    "sin": sp.sin,
+    "cos": sp.cos,
+    "tan": sp.tan,
+    "sec": sp.sec,
+    "csc": sp.csc,
+    "cot": sp.cot,
+
+    "asin": sp.asin,
+    "acos": sp.acos,
+    "atan": sp.atan,
+
+    "log": sp.log,
+    "ln": sp.log,
+    "exp": sp.exp,
+}
 
 
 # =========================================================
@@ -661,10 +748,6 @@ def analyze_symbolic_steps(
                 step
             )
 
-        # ---------------------------------------------
-        # EQUATION
-        # ---------------------------------------------
-
         if equation is not None:
 
             status = "starting equation"
@@ -727,10 +810,6 @@ def analyze_symbolic_steps(
 
             continue
 
-        # ---------------------------------------------
-        # EXPRESSION
-        # ---------------------------------------------
-
         if expression is not None:
 
             status = "parsed expression"
@@ -781,10 +860,6 @@ def analyze_symbolic_steps(
             previous_equation = None
 
             continue
-
-        # ---------------------------------------------
-        # NOT PARSED
-        # ---------------------------------------------
 
         report.append(
             {
@@ -845,7 +920,8 @@ def create_symbolic_report(
 # =========================================================
 
 def generate_gemini_response(
-    prompt: str
+    prompt: str,
+    response_schema: dict
 ):
 
     max_retries = 4
@@ -866,7 +942,7 @@ def generate_gemini_response(
                         "application/json",
 
                     "response_schema":
-                        analysis_schema,
+                        response_schema,
                 },
             )
 
@@ -924,6 +1000,186 @@ def generate_gemini_response(
 
     raise RuntimeError(
         "Gemini did not return a response."
+    )
+
+
+# =========================================================
+# I DON'T KNOW HOW TO START
+# =========================================================
+
+def get_starting_help(
+    question: str
+) -> StartHelpResult:
+
+    prompt = f"""
+You are MindStep, an AI mathematics learning coach.
+
+The student has given you a mathematics problem but says:
+
+"I do not know how to start."
+
+Your job is NOT to solve the entire problem immediately.
+
+Your job is to help the student begin thinking.
+
+============================================================
+QUESTION
+============================================================
+
+{question}
+
+============================================================
+YOUR TEACHING GOAL
+============================================================
+
+Identify the topic and the key idea the student should recognize.
+
+Then create three progressively stronger starter hints.
+
+The hints must work like this:
+
+HINT 1:
+Give only the concept or strategy.
+Do not perform the whole calculation.
+Do not reveal the final answer.
+
+HINT 2:
+Show the setup or identify the important pieces.
+You may provide a useful formula.
+Still do not finish the whole problem.
+
+HINT 3:
+Show the first meaningful mathematical step.
+Give enough guidance that the student should now be able
+to continue solving the problem themselves.
+Do not reveal the final result unless it is absolutely
+unavoidable for a trivial one-step problem.
+
+student_task:
+Give the student one clear thing to calculate or write next.
+
+============================================================
+EXAMPLE
+============================================================
+
+Question:
+Differentiate y = x^2 ln(x^2 + 1)
+
+Possible teaching structure:
+
+concept:
+This problem combines the product rule and chain rule.
+
+recognition:
+There are two multiplied functions: x^2 and ln(x^2 + 1).
+
+hint_1:
+Treat the expression as a product of two functions.
+
+hint_1_math:
+y = uv
+
+hint_2:
+Let u = x^2 and v = ln(x^2 + 1). Find u' and v' separately.
+
+hint_2_math:
+u=x^2, v=ln(x^2+1)
+
+hint_3:
+The logarithm requires the chain rule because its input is x^2+1.
+
+hint_3_math:
+v' = 2x/(x^2+1)
+
+student_task:
+Now find u' and substitute u, v, u', and v' into the product rule.
+
+============================================================
+RULES
+============================================================
+
+1. Do not give the full solution.
+2. Do not give the final answer.
+3. Use clear Grade 11–12 / JEE-friendly language.
+4. Keep each hint concise.
+5. Mathematical text in the math fields should contain
+   only the useful mathematical expression.
+6. If several methods exist, choose one sensible method
+   but do not imply it is the only valid method.
+7. Difficulty should be a short description such as
+   Easy, Moderate, Hard, or JEE Advanced-style.
+"""
+
+    response = generate_gemini_response(
+        prompt,
+        start_help_schema
+    )
+
+    data = json.loads(
+        response.text
+    )
+
+    return StartHelpResult(
+
+        topic=data.get(
+            "topic",
+            "Mathematics"
+        ),
+
+        subtopic=data.get(
+            "subtopic",
+            ""
+        ),
+
+        difficulty=data.get(
+            "difficulty",
+            ""
+        ),
+
+        concept=data.get(
+            "concept",
+            ""
+        ),
+
+        recognition=data.get(
+            "recognition",
+            ""
+        ),
+
+        hint_1=data.get(
+            "hint_1",
+            ""
+        ),
+
+        hint_1_math=data.get(
+            "hint_1_math",
+            ""
+        ),
+
+        hint_2=data.get(
+            "hint_2",
+            ""
+        ),
+
+        hint_2_math=data.get(
+            "hint_2_math",
+            ""
+        ),
+
+        hint_3=data.get(
+            "hint_3",
+            ""
+        ),
+
+        hint_3_math=data.get(
+            "hint_3_math",
+            ""
+        ),
+
+        student_task=data.get(
+            "student_task",
+            ""
+        ),
     )
 
 
@@ -1177,15 +1433,6 @@ math:
 Only the important mathematical expression for that step.
 
 
-Example step titles:
-
-"Identify the inner function"
-"Differentiate the outside"
-"Differentiate the inside"
-"Apply the chain rule"
-"Simplify"
-
-
 final_answer:
 
 Only the final mathematical result or conclusion.
@@ -1197,51 +1444,6 @@ Explain simply:
 
 - what was wrong in the student's earlier reasoning
 - what changed in the corrected method
-
-
-============================================================
-EXAMPLE
-============================================================
-
-For:
-
-y = (x^2 + 1)^5
-
-A clean teaching sequence might be:
-
-Step 1:
-Identify the functions
-
-Math:
-u = x^2 + 1
-
-
-Step 2:
-Differentiate the outside
-
-Math:
-d/du(u^5) = 5u^4
-
-
-Step 3:
-Differentiate the inside
-
-Math:
-du/dx = 2x
-
-
-Step 4:
-Apply the chain rule
-
-Math:
-dy/dx = 5(x^2 + 1)^4(2x)
-
-
-Step 5:
-Simplify
-
-Math:
-dy/dx = 10x(x^2 + 1)^4
 
 
 ============================================================
@@ -1280,7 +1482,8 @@ IMPORTANT RULES
 """
 
     response = generate_gemini_response(
-        prompt
+        prompt,
+        analysis_schema
     )
 
     data = json.loads(
@@ -1395,10 +1598,6 @@ def get_visible_feedback(
     attempt_number: int
 ):
 
-    # ---------------------------------------------
-    # SOLVED
-    # ---------------------------------------------
-
     if result.student_is_correct:
 
         return {
@@ -1407,10 +1606,6 @@ def get_visible_feedback(
             "show_full_explanation": False,
             "solved": True,
         }
-
-    # ---------------------------------------------
-    # ATTEMPT 1
-    # ---------------------------------------------
 
     if attempt_number <= 1:
 
@@ -1421,10 +1616,6 @@ def get_visible_feedback(
             "solved": False,
         }
 
-    # ---------------------------------------------
-    # ATTEMPT 2
-    # ---------------------------------------------
-
     if attempt_number == 2:
 
         return {
@@ -1434,10 +1625,6 @@ def get_visible_feedback(
             "solved": False,
         }
 
-    # ---------------------------------------------
-    # ATTEMPT 3
-    # ---------------------------------------------
-
     if attempt_number == 3:
 
         return {
@@ -1446,10 +1633,6 @@ def get_visible_feedback(
             "show_full_explanation": False,
             "solved": False,
         }
-
-    # ---------------------------------------------
-    # ATTEMPT 4+
-    # ---------------------------------------------
 
     return {
         "level": "Full Explanation",
